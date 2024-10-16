@@ -5,12 +5,10 @@ Provides functions for generating ordering strings
 
 <https://observablehq.com/@dgreensp/implementing-fractional-indexing>
 
-
 """
 from math import floor
 from typing import Optional, List
 import decimal
-
 
 __version__ = '0.1.3'
 __licence__ = 'CC0 1.0 Universal'
@@ -22,58 +20,25 @@ class FIError(Exception):
     pass
 
 
-def midpoint(a: str, b: Optional[str], digits: str) -> str:
+def round_half_up(n: float) -> int:
     """
-    `a` may be empty string, `b` is null or non-empty string.
-    `a < b` lexicographically if `b` is non-null.
-    no trailing zeros allowed.
-    digits is a string such as '0123456789' for base 10.  Digits must be in
-    ascending character code order!
-
+    >>> round_half_up(0.4)
+    0
+    >>> round_half_up(0.8)
+    1
+    >>> round_half_up(0.5)
+    1
+    >>> round_half_up(1.5)
+    2
+    >>> round_half_up(2.5)
+    3
     """
-    zero = digits[0]
-    if b is not None and a >= b:
-        raise FIError(f'{a} >= {b}')
-    if (a and a[-1]) == zero or (b is not None and b[-1] == zero):
-        raise FIError('trailing zero')
-    if b:
-        # remove longest common prefix.  pad `a` with 0s as we
-        # go.  note that we don't need to pad `b`, because it can't
-        # end before `a` while traversing the common prefix.
-        n = 0
-        for x, y in zip(a.ljust(len(b), zero), b):
-            if x == y:
-                n += 1
-                continue
-            break
-
-        if n > 0:
-            return b[:n] + midpoint(a[n:], b[n:], digits)
-
-    # first digits (or lack of digit) are different
-    try:
-        digit_a = digits.index(a[0]) if a else 0
-    except IndexError:
-        digit_a = -1
-    try:
-        digit_b = digits.index(b[0]) if b is not None else len(digits)
-    except IndexError:
-        digit_b = -1
-
-    if digit_b - digit_a > 1:
-        min_digit = round_half_up(0.5 * (digit_a + digit_b))
-        return digits[min_digit]
-    else:
-        if b is not None and len(b) > 1:
-            return b[:1]
-        else:
-            # `b` is null or has length 1 (a single digit).
-            # the first digit of `a` is the previous digit to `b`,
-            # or 9 if `b` is null.
-            # given, for example, midpoint('49', '5'), return
-            # '4' + midpoint('9', null), which will become
-            # '4' + '9' + midpoint('', null), which is '495'
-            return digits[digit_a] + midpoint(a[1:], None, digits)
+    return int(
+        decimal.Decimal(str(n)).quantize(
+            decimal.Decimal('1'),
+            rounding=decimal.ROUND_HALF_UP
+        )
+    )
 
 
 def validate_integer(i: str):
@@ -172,6 +137,60 @@ def decrement_integer(x, digits):
         return head + ''.join(digs)
 
 
+def midpoint(a: str, b: Optional[str], digits: str) -> str:
+    """
+    `a` may be empty string, `b` is null or non-empty string.
+    `a < b` lexicographically if `b` is non-null.
+    no trailing zeros allowed.
+    digits is a string such as '0123456789' for base 10.  Digits must be in
+    ascending character code order!
+
+    """
+    zero = digits[0]
+    if b is not None and a >= b:
+        raise FIError(f'{a} >= {b}')
+    if (a and a[-1]) == zero or (b is not None and b[-1] == zero):
+        raise FIError('trailing zero')
+    if b:
+        # remove longest common prefix.  pad `a` with 0s as we
+        # go.  note that we don't need to pad `b`, because it can't
+        # end before `a` while traversing the common prefix.
+        n = 0
+        for x, y in zip(a.ljust(len(b), zero), b):
+            if x == y:
+                n += 1
+                continue
+            break
+
+        if n > 0:
+            return b[:n] + midpoint(a[n:], b[n:], digits)
+
+    # first digits (or lack of digit) are different
+    try:
+        digit_a = digits.index(a[0]) if a else 0
+    except IndexError:
+        digit_a = -1
+    try:
+        digit_b = digits.index(b[0]) if b is not None else len(digits)
+    except IndexError:
+        digit_b = -1
+
+    if digit_b - digit_a > 1:
+        min_digit = round_half_up(0.5 * (digit_a + digit_b))
+        return digits[min_digit]
+    else:
+        if b is not None and len(b) > 1:
+            return b[:1]
+        else:
+            # `b` is null or has length 1 (a single digit).
+            # the first digit of `a` is the previous digit to `b`,
+            # or 9 if `b` is null.
+            # given, for example, midpoint('49', '5'), return
+            # '4' + midpoint('9', null), which will become
+            # '4' + '9' + midpoint('', null), which is '495'
+            return digits[digit_a] + midpoint(a[1:], None, digits)
+
+
 def generate_key_between(a: Optional[str], b: Optional[str], digits=BASE_62_DIGITS) -> str:
     """
     `a` is an order key or null (START).
@@ -262,24 +281,3 @@ def generate_n_keys_between(a: Optional[str], b: Optional[str], n: int, digits=B
         c,
         *generate_n_keys_between(c, b, n - mid - 1, digits)
     ]
-
-
-def round_half_up(n: float) -> int:
-    """
-    >>> round_half_up(0.4)
-    0
-    >>> round_half_up(0.8)
-    1
-    >>> round_half_up(0.5)
-    1
-    >>> round_half_up(1.5)
-    2
-    >>> round_half_up(2.5)
-    3
-    """
-    return int(
-        decimal.Decimal(str(n)).quantize(
-            decimal.Decimal('1'),
-            rounding=decimal.ROUND_HALF_UP
-        )
-    )
