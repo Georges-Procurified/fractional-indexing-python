@@ -3,7 +3,7 @@
 import decimal
 from typing import Optional
 
-from .exceptions import OrderKeyError
+from exceptions import OrderKeyError
 
 BASE_62_DIGITS: str = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
