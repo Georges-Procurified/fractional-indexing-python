@@ -13,7 +13,7 @@ import decimal
 __version__ = '0.1.3'
 __licence__ = 'CC0 1.0 Universal'
 
-BASE_62_DIGITS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+BASE_62_DIGITS: str = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
 
 class OrderKeyError(Exception):
@@ -31,7 +31,7 @@ def round_half_up(value: float) -> int:
     )
 
 
-def validate_integer(order_key: str):
+def validate_integer(order_key: str) -> None:
     """Validate that the length of the integer part of the order key is correct."""
     if len(order_key) != get_integer_length(order_key[0]):
         raise OrderKeyError(f'Invalid integer part of order key: {order_key}')
@@ -54,7 +54,7 @@ def get_integer_part(order_key: str) -> str:
     return order_key[:integer_part_length]
 
 
-def validate_order_key(order_key: str, digits: str = BASE_62_DIGITS):
+def validate_order_key(order_key: str, digits: str = BASE_62_DIGITS) -> None:
     """Check the validity of an order key."""
     zero = digits[0]
     smallest_valid_key = 'A' + (zero * 26)
@@ -75,7 +75,7 @@ def increment_integer(integer_str: str, digits: str) -> Optional[str]:
     validate_integer(integer_str)
 
     head, *digits_list = integer_str
-    carry = True
+    has_carry_over = True
 
     for i in reversed(range(len(digits_list))):
         current_digit = digits.index(digits_list[i]) + 1
@@ -83,10 +83,10 @@ def increment_integer(integer_str: str, digits: str) -> Optional[str]:
             digits_list[i] = zero
         else:
             digits_list[i] = digits[current_digit]
-            carry = False
+            has_carry_over = False
             break
 
-    if carry:
+    if has_carry_over:
         if head == 'Z':
             return 'a' + zero
         if head == 'z':
@@ -106,7 +106,7 @@ def decrement_integer(integer_str: str, digits: str) -> Optional[str]:
     validate_integer(integer_str)
 
     head, *digits_list = integer_str
-    borrow = True
+    requires_borrow = True
 
     for i in reversed(range(len(digits_list))):
         current_digit = digits.index(digits_list[i]) - 1
@@ -115,10 +115,10 @@ def decrement_integer(integer_str: str, digits: str) -> Optional[str]:
             digits_list[i] = digits[-1]
         else:
             digits_list[i] = digits[current_digit]
-            borrow = False
+            requires_borrow = False
             break
 
-    if borrow:
+    if requires_borrow:
         if head == 'a':
             return 'Z' + digits[-1]
         if head == 'A':
@@ -133,7 +133,7 @@ def decrement_integer(integer_str: str, digits: str) -> Optional[str]:
     return head + ''.join(digits_list)
 
 
-def midpoint(start_key: str, end_key: Optional[str], digits: str) -> str:
+def find_middle_key(start_key: str, end_key: Optional[str], digits: str) -> str:
     """
     Calculate the midpoint between two order keys.
     `start_key` must be lexicographically less than `end_key`.
@@ -156,7 +156,7 @@ def midpoint(start_key: str, end_key: Optional[str], digits: str) -> str:
             break
 
         if common_prefix_len > 0:
-            return end_key[:common_prefix_len] + midpoint(
+            return end_key[:common_prefix_len] + find_middle_key(
                 start_key[common_prefix_len:], end_key[common_prefix_len:], digits
             )
 
@@ -171,7 +171,51 @@ def midpoint(start_key: str, end_key: Optional[str], digits: str) -> str:
     if end_key and len(end_key) > 1:
         return end_key[:1]
 
-    return digits[digit_a] + midpoint(start_key[1:], None, digits)
+    return digits[digit_a] + find_middle_key(start_key[1:], None, digits)
+
+
+def handle_end_key_only_case(end_key: str, digits: str) -> str:
+    """Handle the case when only `end_key` is provided."""
+    zero = digits[0]
+    integer_part = get_integer_part(end_key)
+    fractional_part = end_key[len(integer_part):]
+    if integer_part == 'A' + (zero * 26):
+        return integer_part + find_middle_key('', fractional_part, digits)
+    if integer_part < end_key:
+        return integer_part
+    decremented = decrement_integer(integer_part, digits)
+    if decremented is None:
+        raise OrderKeyError('Cannot decrement anymore')
+    return decremented
+
+
+def handle_start_key_only_case(start_key: str, digits: str) -> str:
+    """Handle the case when only `start_key` is provided."""
+    integer_part = get_integer_part(start_key)
+    fractional_part = start_key[len(integer_part):]
+    incremented = increment_integer(integer_part, digits)
+    return integer_part + find_middle_key(fractional_part, None, digits) if incremented is None else incremented
+
+
+def handle_both_keys_case(start_key: str, end_key: str, digits: str) -> str:
+    """Handle the case when both `start_key` and `end_key` are provided."""
+    start_int_part = get_integer_part(start_key)
+    start_frac_part = start_key[len(start_int_part):]
+    end_int_part = get_integer_part(end_key)
+    end_frac_part = end_key[len(end_int_part):]
+
+    if start_int_part == end_int_part:
+        return start_int_part + find_middle_key(start_frac_part, end_frac_part, digits)
+
+    incremented = increment_integer(start_int_part, digits)
+
+    if incremented is None:
+        raise OrderKeyError('Cannot increment anymore')
+
+    if incremented < end_key:
+        return incremented
+
+    return start_int_part + find_middle_key(start_frac_part, None, digits)
 
 
 def generate_key_between(start_key: Optional[str], end_key: Optional[str], digits: str = BASE_62_DIGITS) -> str:
@@ -193,73 +237,55 @@ def generate_key_between(start_key: Optional[str], end_key: Optional[str], digit
     if start_key is None:
         if end_key is None:
             return 'a' + zero
-        integer_part = get_integer_part(end_key)
-        fractional_part = end_key[len(integer_part):]
-        if integer_part == 'A' + (zero * 26):
-            return integer_part + midpoint('', fractional_part, digits)
-        if integer_part < end_key:
-            return integer_part
-        decremented = decrement_integer(integer_part, digits)
-        if decremented is None:
-            raise OrderKeyError('Cannot decrement anymore')
-        return decremented
+        return handle_end_key_only_case(end_key, digits)
 
     if end_key is None:
-        integer_part = get_integer_part(start_key)
-        fractional_part = start_key[len(integer_part):]
-        incremented = increment_integer(integer_part, digits)
-        return integer_part + midpoint(fractional_part, None, digits) if incremented is None else incremented
+        return handle_start_key_only_case(start_key, digits)
 
-    start_int_part = get_integer_part(start_key)
-    start_frac_part = start_key[len(start_int_part):]
-    end_int_part = get_integer_part(end_key)
-    end_frac_part = end_key[len(end_int_part):]
-
-    if start_int_part == end_int_part:
-        return start_int_part + midpoint(start_frac_part, end_frac_part, digits)
-
-    incremented = increment_integer(start_int_part, digits)
-
-    if incremented is None:
-        raise OrderKeyError('Cannot increment anymore')
-
-    if incremented < end_key:
-        return incremented
-
-    return start_int_part + midpoint(start_frac_part, None, digits)
+    return handle_both_keys_case(start_key, end_key, digits)
 
 
-def generate_n_keys_between(start_key: Optional[str], end_key: Optional[str], n: int, digits: str = BASE_62_DIGITS) -> List[str]:
+
+def handle_generate_n_keys_with_end_none(start_key: Optional[str], number_of_keys: int, digits: str) -> List[str]:
+    """Handle case when generating keys with `end_key` as None."""
+    current_key = generate_key_between(start_key, None, digits)
+    result = [current_key]
+    for _ in range(number_of_keys - 1):
+        current_key = generate_key_between(current_key, None, digits)
+        result.append(current_key)
+    return result
+
+
+def handle_generate_n_keys_with_start_none(end_key: Optional[str], number_of_keys: int, digits: str) -> List[str]:
+    """Handle case when generating keys with `start_key` as None."""
+    current_key = generate_key_between(None, end_key, digits)
+    result = [current_key]
+    for _ in range(number_of_keys - 1):
+        current_key = generate_key_between(None, current_key, digits)
+        result.append(current_key)
+    return list(reversed(result))
+
+def generate_n_keys_between(start_key: Optional[str], end_key: Optional[str], number_of_keys: int, digits: str = BASE_62_DIGITS) -> List[str]:
     """
     Generate `n` distinct order keys between `start_key` and `end_key`.
     """
-    if n == 0:
+    if number_of_keys == 0:
         return []
 
-    if n == 1:
+    if number_of_keys == 1:
         return [generate_key_between(start_key, end_key, digits)]
 
     if end_key is None:
-        current_key = generate_key_between(start_key, end_key, digits)
-        result = [current_key]
-        for _ in range(n - 1):
-            current_key = generate_key_between(current_key, end_key, digits)
-            result.append(current_key)
-        return result
+        return handle_generate_n_keys_with_end_none(start_key, number_of_keys, digits)
 
     if start_key is None:
-        current_key = generate_key_between(start_key, end_key, digits)
-        result = [current_key]
-        for _ in range(n - 1):
-            current_key = generate_key_between(start_key, current_key, digits)
-            result.append(current_key)
-        return list(reversed(result))
+        return handle_generate_n_keys_with_start_none(end_key, number_of_keys, digits)
 
-    mid_index = floor(n / 2)
+    mid_index = floor(number_of_keys / 2)
     middle_key = generate_key_between(start_key, end_key, digits)
 
     return [
         *generate_n_keys_between(start_key, middle_key, mid_index, digits),
         middle_key,
-        *generate_n_keys_between(middle_key, end_key, n - mid_index - 1, digits)
+        *generate_n_keys_between(middle_key, end_key, number_of_keys - mid_index - 1, digits)
     ]
